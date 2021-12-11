@@ -32,6 +32,7 @@ gunicorn>=20.1.0                # Gunicorn web server
 importlib_metadata              # Backport for importlib.metadata
 inventree                       # Install the latest version of the InvenTree API python library
 markdown==3.3.4                 # Force particular version of markdown
+sphinx==4.3.1                   # dev docs
 pep8-naming==0.11.1             # PEP naming convention extension
 pillow==8.3.2                   # Image manipulation
 py-moneyed==0.8.0               # Specific version requirement for py-moneyed

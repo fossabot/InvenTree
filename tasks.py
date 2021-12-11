@@ -547,3 +547,14 @@ def render_js_files(c):
     """
 
     manage(c, "test InvenTree.ci_render_js")
+
+
+@task
+def docs(c):
+    """
+    Create the development docs
+    """
+    path = 'sphinx-build "docs" "InvenTree/InvenTree/static/docs/_build"'
+
+    # make
+    c.run(f'{path}')
