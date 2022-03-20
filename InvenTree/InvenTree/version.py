@@ -12,10 +12,25 @@ import common.models
 INVENTREE_SW_VERSION = "0.7.0 dev"
 
 # InvenTree API version
-INVENTREE_API_VERSION = 28
+INVENTREE_API_VERSION = 32
 
 """
 Increment this API version number whenever there is a significant change to the API that any clients need to know about
+
+v32 -> 2022-03-19
+    - Adds "parameters" detail to Part API endpoint (use &parameters=true)
+    - Adds ability to filter PartParameterTemplate API by Part instance
+    - Adds ability to filter PartParameterTemplate API by PartCategory instance
+
+v31 -> 2022-03-14
+    - Adds "updated" field to SupplierPriceBreakList and SupplierPriceBreakDetail API endpoints
+
+v30 -> 2022-03-09
+    - Adds "exclude_location" field to BuildAutoAllocation API endpoint
+    - Allows BuildItem API endpoint to be filtered by BomItem relation
+
+v29 -> 2022-03-08
+    - Adds "scheduling" endpoint for predicted stock scheduling information
 
 v28 -> 2022-03-04
     - Adds an API endpoint for auto allocation of stock items against a build order
@@ -164,7 +179,7 @@ def inventreeDocsVersion():
     if isInvenTreeDevelopmentVersion():
         return "latest"
     else:
-        return INVENTREE_SW_VERSION
+        return INVENTREE_SW_VERSION  # pragma: no cover
 
 
 def isInvenTreeUpToDate():
@@ -182,10 +197,10 @@ def isInvenTreeUpToDate():
         return True
 
     # Extract "tuple" version (Python can directly compare version tuples)
-    latest_version = inventreeVersionTuple(latest)
-    inventree_version = inventreeVersionTuple()
+    latest_version = inventreeVersionTuple(latest)  # pragma: no cover
+    inventree_version = inventreeVersionTuple()  # pragma: no cover
 
-    return inventree_version >= latest_version
+    return inventree_version >= latest_version  # pragma: no cover
 
 
 def inventreeApiVersion():
@@ -202,7 +217,7 @@ def inventreeCommitHash():
 
     try:
         return str(subprocess.check_output('git rev-parse --short HEAD'.split()), 'utf-8').strip()
-    except:
+    except:  # pragma: no cover
         return None
 
 
@@ -212,5 +227,5 @@ def inventreeCommitDate():
     try:
         d = str(subprocess.check_output('git show -s --format=%ci'.split()), 'utf-8').strip()
         return d.split(' ')[0]
-    except:
+    except:  # pragma: no cover
         return None

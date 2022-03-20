@@ -5,6 +5,8 @@ Provides a JSON API for the Part app
 # -*- coding: utf-8 -*-
 from __future__ import unicode_literals
 
+import datetime
+
 from django.conf.urls import url, include
 from django.http import JsonResponse
 from django.db.models import Q, F, Count, Min, Max, Avg
@@ -40,7 +42,8 @@ from company.models import Company, ManufacturerPart, SupplierPart
 from stock.models import StockItem, StockLocation
 
 from common.models import InvenTreeSetting
-from build.models import Build
+from build.models import Build, BuildItem
+import order.models
 
 from . import serializers as part_serializers
 
@@ -48,7 +51,7 @@ from InvenTree.helpers import str2bool, isNull, increment
 from InvenTree.helpers import DownloadFile
 from InvenTree.api import AttachmentMixin
 
-from InvenTree.status_codes import BuildStatus
+from InvenTree.status_codes import BuildStatus, PurchaseOrderStatus, SalesOrderStatus
 
 
 class CategoryList(generics.ListCreateAPIView):
@@ -430,6 +433,142 @@ class PartThumbsUpdate(generics.RetrieveUpdateAPIView):
     ]
 
 
+class PartScheduling(generics.RetrieveAPIView):
+    """
+    API endpoint for delivering "scheduling" information about a given part via the API.
+
+    Returns a chronologically ordered list about future "scheduled" events,
+    concerning stock levels for the part:
+
+    - Purchase Orders (incoming stock)
+    - Sales Orders (outgoing stock)
+    - Build Orders (incoming completed stock)
+    - Build Orders (outgoing allocated stock)
+    """
+
+    queryset = Part.objects.all()
+
+    def retrieve(self, request, *args, **kwargs):
+
+        today = datetime.datetime.now().date()
+
+        part = self.get_object()
+
+        schedule = []
+
+        def add_schedule_entry(date, quantity, title, label, url):
+            """
+            Check if a scheduled entry should be added:
+            - date must be non-null
+            - date cannot be in the "past"
+            - quantity must not be zero
+            """
+
+            if date and date >= today and quantity != 0:
+                schedule.append({
+                    'date': date,
+                    'quantity': quantity,
+                    'title': title,
+                    'label': label,
+                    'url': url,
+                })
+
+        # Add purchase order (incoming stock) information
+        po_lines = order.models.PurchaseOrderLineItem.objects.filter(
+            part__part=part,
+            order__status__in=PurchaseOrderStatus.OPEN,
+        )
+
+        for line in po_lines:
+
+            target_date = line.target_date or line.order.target_date
+
+            quantity = max(line.quantity - line.received, 0)
+
+            add_schedule_entry(
+                target_date,
+                quantity,
+                _('Incoming Purchase Order'),
+                str(line.order),
+                line.order.get_absolute_url()
+            )
+
+        # Add sales order (outgoing stock) information
+        so_lines = order.models.SalesOrderLineItem.objects.filter(
+            part=part,
+            order__status__in=SalesOrderStatus.OPEN,
+        )
+
+        for line in so_lines:
+
+            target_date = line.target_date or line.order.target_date
+
+            quantity = max(line.quantity - line.shipped, 0)
+
+            add_schedule_entry(
+                target_date,
+                -quantity,
+                _('Outgoing Sales Order'),
+                str(line.order),
+                line.order.get_absolute_url(),
+            )
+
+        # Add build orders (incoming stock) information
+        build_orders = Build.objects.filter(
+            part=part,
+            status__in=BuildStatus.ACTIVE_CODES
+        )
+
+        for build in build_orders:
+
+            quantity = max(build.quantity - build.completed, 0)
+
+            add_schedule_entry(
+                build.target_date,
+                quantity,
+                _('Stock produced by Build Order'),
+                str(build),
+                build.get_absolute_url(),
+            )
+
+        """
+        Add build order allocation (outgoing stock) information.
+
+        Here we need some careful consideration:
+
+        - 'Tracked' stock items are removed from stock when the individual Build Output is completed
+        - 'Untracked' stock items are removed from stock when the Build Order is completed
+
+        The 'simplest' approach here is to look at existing BuildItem allocations which reference this part,
+        and "schedule" them for removal at the time of build order completion.
+
+        This assumes that the user is responsible for correctly allocating parts.
+
+        However, it has the added benefit of side-stepping the various BOM substition options,
+        and just looking at what stock items the user has actually allocated against the Build.
+        """
+
+        build_allocations = BuildItem.objects.filter(
+            stock_item__part=part,
+            build__status__in=BuildStatus.ACTIVE_CODES,
+        )
+
+        for allocation in build_allocations:
+
+            add_schedule_entry(
+                allocation.build.target_date,
+                -allocation.quantity,
+                _('Stock required for Build Order'),
+                str(allocation.build),
+                allocation.build.get_absolute_url(),
+            )
+
+        # Sort by incrementing date values
+        schedule = sorted(schedule, key=lambda entry: entry['date'])
+
+        return Response(schedule)
+
+
 class PartSerialNumberDetail(generics.RetrieveAPIView):
     """
     API endpoint for returning extra serial number information about a particular part
@@ -715,6 +854,14 @@ class PartList(generics.ListCreateAPIView):
             self.starred_parts = [star.part for star in self.request.user.starred_parts.all()]
 
         kwargs['starred_parts'] = self.starred_parts
+
+        try:
+            params = self.request.query_params
+
+            kwargs['parameters'] = str2bool(params.get('parameters', None))
+
+        except AttributeError:
+            pass
 
         return self.serializer_class(*args, **kwargs)
 
@@ -1266,6 +1413,44 @@ class PartParameterTemplateList(generics.ListCreateAPIView):
         'name',
     ]
 
+    def filter_queryset(self, queryset):
+        """
+        Custom filtering for the PartParameterTemplate API
+        """
+
+        queryset = super().filter_queryset(queryset)
+
+        params = self.request.query_params
+
+        # Filtering against a "Part" - return only parameter templates which are referenced by a part
+        part = params.get('part', None)
+
+        if part is not None:
+
+            try:
+                part = Part.objects.get(pk=part)
+                parameters = PartParameter.objects.filter(part=part)
+                template_ids = parameters.values_list('template').distinct()
+                queryset = queryset.filter(pk__in=[el[0] for el in template_ids])
+            except (ValueError, Part.DoesNotExist):
+                pass
+
+        # Filtering against a "PartCategory" - return only parameter templates which are referenced by parts in this category
+        category = params.get('category', None)
+
+        if category is not None:
+
+            try:
+                category = PartCategory.objects.get(pk=category)
+                cats = category.get_descendants(include_self=True)
+                parameters = PartParameter.objects.filter(part__category__in=cats)
+                template_ids = parameters.values_list('template').distinct()
+                queryset = queryset.filter(pk__in=[el[0] for el in template_ids])
+            except (ValueError, PartCategory.DoesNotExist):
+                pass
+
+        return queryset
+
 
 class PartParameterList(generics.ListCreateAPIView):
     """ API endpoint for accessing a list of PartParameter objects
@@ -1733,6 +1918,9 @@ part_api_urls = [
 
         # Endpoint for extra serial number information
         url(r'^serial-numbers/', PartSerialNumberDetail.as_view(), name='api-part-serial-number-detail'),
+
+        # Endpoint for future scheduling information
+        url(r'^scheduling/', PartScheduling.as_view(), name='api-part-scheduling'),
 
         # Endpoint for duplicating a BOM for the specific Part
         url(r'^bom-copy/', PartCopyBOM.as_view(), name='api-part-bom-copy'),

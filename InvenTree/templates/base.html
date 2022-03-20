@@ -89,6 +89,7 @@
     </div>
     {% include 'modals.html' %}
     {% include 'about.html' %}
+    {% include "notifications.html" %}
 </div>
 {% endblock %}
 
@@ -108,8 +109,56 @@
 <script type='text/javascript' src='{% static "bootstrap-table/extensions/custom-view/bootstrap-table-custom-view.js" %}'></script>
 {% endblock %}
 
+<<<<<<< HEAD
 {% block body_scripts_inventree %}
 {% endblock %}
+=======
+<!-- 3rd party general js -->
+<script type="text/javascript" src="{% static 'fullcalendar/main.js' %}"></script>
+<script type="text/javascript" src="{% static 'fullcalendar/locales-all.js' %}"></script>
+<script type="text/javascript" src="{% static 'select2/js/select2.full.js' %}"></script>
+<script type='text/javascript' src="{% static 'script/chart.js' %}"></script>
+<script type='text/javascript' src="{% static 'script/moment.js' %}"></script>
+<script type='text/javascript' src="{% static 'script/chartjs-adapter-moment.js' %}"></script>
+    
+<script type='text/javascript' src="{% static 'script/clipboard.min.js' %}"></script>
+<script type='text/javascript' src="{% static 'script/randomColor.min.js' %}"></script>
+
+<!-- general InvenTree -->
+<script type='text/javascript' src="{% static 'script/inventree/inventree.js' %}"></script>
+
+<!-- dynamic javascript templates -->
+<script type='text/javascript' src="{% url 'calendar.js' %}"></script>
+<script type='text/javascript' src="{% url 'nav.js' %}"></script>
+<script type='text/javascript' src="{% url 'settings.js' %}"></script>
+
+<!-- translated javascript templates-->
+<script type='text/javascript' src="{% i18n_static 'api.js' %}"></script>
+<script type='text/javascript' src="{% i18n_static 'attachment.js' %}"></script>
+<script type='text/javascript' src="{% i18n_static 'barcode.js' %}"></script>
+<script type='text/javascript' src="{% i18n_static 'bom.js' %}"></script>
+<script type='text/javascript' src="{% i18n_static 'build.js' %}"></script>
+<script type='text/javascript' src="{% i18n_static 'company.js' %}"></script>
+<script type='text/javascript' src="{% i18n_static 'filters.js' %}"></script>
+<script type='text/javascript' src="{% i18n_static 'forms.js' %}"></script>
+<script type='text/javascript' src="{% i18n_static 'helpers.js' %}"></script>
+<script type='text/javascript' src="{% i18n_static 'label.js' %}"></script>
+<script type='text/javascript' src="{% i18n_static 'modals.js' %}"></script>
+<script type='text/javascript' src="{% i18n_static 'model_renderers.js' %}"></script>
+<script type='text/javascript' src="{% i18n_static 'order.js' %}"></script>
+<script type='text/javascript' src="{% i18n_static 'part.js' %}"></script>
+<script type='text/javascript' src="{% i18n_static 'report.js' %}"></script>
+<script type='text/javascript' src="{% i18n_static 'stock.js' %}"></script>
+<script type='text/javascript' src="{% i18n_static 'plugin.js' %}"></script>
+<script type='text/javascript' src="{% i18n_static 'tables.js' %}"></script>
+<script type='text/javascript' src="{% i18n_static 'table_filters.js' %}"></script>
+<script type='text/javascript' src="{% i18n_static 'notification.js' %}"></script>
+
+<script type='text/javascript' src="{% static 'fontawesome/js/solid.min.js' %}"></script>
+<script type='text/javascript' src="{% static 'fontawesome/js/regular.min.js' %}"></script>
+<script type='text/javascript' src="{% static 'fontawesome/js/brands.min.js' %}"></script>
+<script type='text/javascript' src="{% static 'fontawesome/js/fontawesome.min.js' %}"></script>
+>>>>>>> c082cec3ee8b6089a24282afde94a92cbb81e611
 
 {% block js_load %}
 {% endblock %}

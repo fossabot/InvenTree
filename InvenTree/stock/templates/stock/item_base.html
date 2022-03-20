@@ -460,11 +460,17 @@ $('#print-label').click(function() {
 });
 
 {% if roles.stock.change %}
+<<<<<<< HEAD
 $('#stock-duplicate').click(function() {
     // Duplicate a stock item
     duplicateStockItem({{ item.pk }}, {
         follow: true,
     });
+=======
+$("#stock-duplicate").click(function() {
+    // Duplicate a stock item 
+    duplicateStockItem({{ item.pk }}, {});
+>>>>>>> c082cec3ee8b6089a24282afde94a92cbb81e611
 });
 
 $('#stock-edit').click(function() {

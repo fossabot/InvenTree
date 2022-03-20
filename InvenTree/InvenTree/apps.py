@@ -28,7 +28,7 @@ class InvenTreeConfig(AppConfig):
 
             self.start_background_tasks()
 
-            if not isInTestMode():
+            if not isInTestMode():  # pragma: no cover
                 self.update_exchange_rates()
 
         if canAppAccessDatabase() or settings.TESTING_ENV:
@@ -98,7 +98,7 @@ class InvenTreeConfig(AppConfig):
             schedule_type=Schedule.DAILY,
         )
 
-    def update_exchange_rates(self):
+    def update_exchange_rates(self):  # pragma: no cover
         """
         Update exchange rates each time the server is started, *if*:
 
@@ -180,7 +180,7 @@ class InvenTreeConfig(AppConfig):
 
         # not all needed variables set
         if set_variables < 3:
-            logger.warn('Not all required settings for adding a user on startup are present:\nINVENTREE_SET_USER, INVENTREE_SET_EMAIL, INVENTREE_SET_PASSWORD')
+            logger.warn('Not all required settings for adding a user on startup are present:\nINVENTREE_ADMIN_USER, INVENTREE_ADMIN_EMAIL, INVENTREE_ADMIN_PASSWORD')
             settings.USER_ADDED = True
             return
 

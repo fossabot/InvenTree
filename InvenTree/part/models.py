@@ -20,7 +20,7 @@ from django.db.models.functions import Coalesce
 from django.core.validators import MinValueValidator
 
 from django.contrib.auth.models import User
-from django.db.models.signals import pre_delete, post_save
+from django.db.models.signals import post_save
 from django.dispatch import receiver
 
 from jinja2 import Template
@@ -75,6 +75,35 @@ class PartCategory(InvenTreeTree):
         default_location: Default storage location for parts in this category or child categories
         default_keywords: Default keywords for parts created in this category
     """
+
+    def delete(self, *args, **kwargs):
+        """
+        Custom model deletion routine, which updates any child categories or parts.
+        This must be handled within a transaction.atomic(), otherwise the tree structure is damaged
+        """
+
+        with transaction.atomic():
+
+            parent = self.parent
+            tree_id = self.tree_id
+
+            # Update each part in this category to point to the parent category
+            for part in self.parts.all():
+                part.category = self.parent
+                part.save()
+
+            # Update each child category
+            for child in self.children.all():
+                child.parent = self.parent
+                child.save()
+
+            super().delete(*args, **kwargs)
+
+            if parent is not None:
+                # Partially rebuild the tree (cheaper than a complete rebuild)
+                PartCategory.objects.partial_rebuild(tree_id)
+            else:
+                PartCategory.objects.rebuild()
 
     default_location = TreeForeignKey(
         'stock.StockLocation', related_name="default_categories",
@@ -260,27 +289,6 @@ class PartCategory(InvenTreeTree):
             ).delete()
 
 
-@receiver(pre_delete, sender=PartCategory, dispatch_uid='partcategory_delete_log')
-def before_delete_part_category(sender, instance, using, **kwargs):
-    """ Receives before_delete signal for PartCategory object
-
-    Before deleting, update child Part and PartCategory objects:
-
-    - For each child category, set the parent to the parent of *this* category
-    - For each part, set the 'category' to the parent of *this* category
-    """
-
-    # Update each part in this category to point to the parent category
-    for part in instance.parts.all():
-        part.category = instance.parent
-        part.save()
-
-    # Update each child category
-    for child in instance.children.all():
-        child.parent = instance.parent
-        child.save()
-
-
 def rename_part_image(instance, filename):
     """ Function for renaming a part image file
 
@@ -409,7 +417,7 @@ class Part(MPTTModel):
         context['allocated_build_order_quantity'] = self.build_order_allocation_count()
 
         context['required_sales_order_quantity'] = self.required_sales_order_quantity()
-        context['allocated_sales_order_quantity'] = self.sales_order_allocation_count()
+        context['allocated_sales_order_quantity'] = self.sales_order_allocation_count(pending=True)
 
         context['available'] = self.available_stock
         context['on_order'] = self.on_order
@@ -1110,7 +1118,9 @@ class Part(MPTTModel):
         quantity = 0
 
         for line in open_lines:
-            quantity += line.quantity
+            # Determine the quantity "remaining" to be shipped out
+            remaining = max(line.quantity - line.shipped, 0)
+            quantity += remaining
 
         return quantity
 
@@ -1328,19 +1338,36 @@ class Part(MPTTModel):
 
         return query['total']
 
-    def sales_order_allocations(self):
+    def sales_order_allocations(self, **kwargs):
         """
         Return all sales-order-allocation objects which allocate this part to a SalesOrder
         """
 
-        return OrderModels.SalesOrderAllocation.objects.filter(item__part__id=self.id)
+        queryset = OrderModels.SalesOrderAllocation.objects.filter(item__part__id=self.id)
 
-    def sales_order_allocation_count(self):
+        pending = kwargs.get('pending', None)
+
+        if pending is True:
+            # Look only for 'open' orders which have not shipped
+            queryset = queryset.filter(
+                line__order__status__in=SalesOrderStatus.OPEN,
+                shipment__shipment_date=None,
+            )
+        elif pending is False:
+            # Look only for 'closed' orders or orders which have shipped
+            queryset = queryset.exclude(
+                line__order__status__in=SalesOrderStatus.OPEN,
+                shipment__shipment_date=None,
+            )
+
+        return queryset
+
+    def sales_order_allocation_count(self, **kwargs):
         """
-        Return the tutal quantity of this part allocated to sales orders
+        Return the total quantity of this part allocated to sales orders
         """
 
-        query = self.sales_order_allocations().aggregate(
+        query = self.sales_order_allocations(**kwargs).aggregate(
             total=Coalesce(
                 Sum(
                     'quantity',
