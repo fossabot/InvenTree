@@ -1,4 +1,6 @@
-{% extends "auth/base.html" %}
+{% extends "skeleton.html" %}
+{% load static %}
+{% load inventree_extras %}
 {% load i18n %}
 
 {% block head %}
@@ -8,6 +10,45 @@
 {% block page_title %}{% trans "Site is in Maintenance" %}{% endblock %}
 {% block body_title %}{% trans "Site is in Maintenance" %}{% endblock %}
 
-{% block content %}
-{% trans "The site is currently in maintenance and should be up again soon!" %}
+                <div class='clearfix content-heading login-header d-flex flex-wrap'>
+                    <img class="pull-left" src="{% inventree_logo %}" width="60" height="60"/>
+                    {% include "spacer.html" %}
+                    <span class='float-right'><h3>{% block body_title %}{% trans 'Site is in Maintenance' %}{% endblock %}</h3></span>
+                </div>
+            </div>
+                <div class='container-fluid'>
+                    <hr>
+                    {% block content %}
+                    {% trans 'The site is currently in maintenance and should be up again soon!' %}
+                    {% endblock %}
+                </div>
+        </div>
+        </div>
+
+        {% block extra_body %}
+        {% endblock %}
+    </div>
 {% endblock %}
+
+{% block js_base %}
+<script type='text/javascript'>
+$(document).ready(function () {
+    // notifications
+    {% if messages %}
+    {% for message in messages %}
+    showAlertOrCache(
+        '{{ message }}',
+        true,
+        {
+            style: 'info',
+        }
+    );
+    {% endfor %}
+    {% endif %}
+
+    inventreeDocReady();
+});
+</script>
+{% endblock %}
+</body>
+</html>

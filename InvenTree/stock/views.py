@@ -15,7 +15,7 @@ from django.http import HttpResponseRedirect
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group
 
-from django.utils.translation import ugettext_lazy as _
+from django.utils.translation import gettext_lazy as _
 
 from moneyed import CURRENCIES
 
@@ -643,6 +643,16 @@ class StockItemConvert(AjaxUpdateView):
         form.fields['part'].queryset = item.part.get_conversion_options()
 
         return form
+
+    def save(self, obj, form):
+
+        stock_item = self.get_object()
+
+        variant = form.cleaned_data.get('part', None)
+
+        stock_item.convert_to_variant(variant, user=self.request.user)
+
+        return stock_item
 
 
 class StockLocationCreate(AjaxCreateView):

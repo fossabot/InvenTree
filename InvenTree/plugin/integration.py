@@ -11,7 +11,7 @@ import pathlib
 
 from django.urls.base import reverse
 from django.conf import settings
-from django.utils.translation import ugettext_lazy as _
+from django.utils.translation import gettext_lazy as _
 
 import plugin.plugin as plugin_base
 from plugin.helpers import get_git_log, GitStatus
@@ -93,6 +93,14 @@ class IntegrationPluginBase(MixinBase, plugin_base.InvenTreePluginBase):
         Is the plugin delivered as a package
         """
         return getattr(self, 'is_package', False)
+
+    @property
+    def is_sample(self):
+        """
+        Is this plugin part of the samples?
+        """
+        path = str(self.package_path)
+        return path.startswith('plugin/samples/')
 
     # region properties
     @property

@@ -691,8 +691,24 @@ function loadBomTable(table, options={}) {
 
     setupFilterList('bom', $(table));
 
-    // Construct the table columns
+    function availableQuantity(row) {
 
+        // Base stock
+        var available = row.available_stock;
+
+        // Substitute stock
+        available += (row.available_substitute_stock || 0);
+
+        // Variant stock
+        if (row.allow_variants) {
+            available += (row.available_variant_stock || 0);
+        }
+
+        return available;
+
+    }
+
+    // Construct the table columns
     var cols = [];
 
     if (options.editable) {
@@ -727,11 +743,29 @@ function loadBomTable(table, options={}) {
             field: 'sub_part',
             title: '{% trans "Part" %}',
             sortable: true,
+            switchable: false,
             formatter: function(value, row) {
                 var url = `/part/${row.sub_part}/`;
-                var html = imageHoverIcon(row.sub_part_detail.thumbnail) + renderLink(row.sub_part_detail.full_name, url);
+                var html = '';
 
                 var sub_part = row.sub_part_detail;
+                
+                // Display an extra icon if this part is an assembly
+                if (sub_part.assembly) {
+                    
+                    if (row.sub_assembly_received) {
+                        // Data received, ignore
+                    } else if (row.sub_assembly_requested) {
+                        html += `<a href='#'><span class='fas fa-sync fa-spin'></span></a>`;
+                    } else {
+                        html += `
+                            <a href='#' pk='${row.pk}' class='load-sub-assembly' id='load-sub-assembly-${row.pk}'>
+                                <span class='fas fa-sync-alt' title='{% trans "Load BOM for subassembly" %}'></span>
+                            </a> `;
+                    }
+                }
+
+                html += imageHoverIcon(sub_part.thumbnail) + renderLink(row.sub_part_detail.full_name, url);
 
                 html += makePartIcons(sub_part);
 
@@ -741,13 +775,6 @@ function loadBomTable(table, options={}) {
 
                 if (row.allow_variants) {
                     html += makeIconBadge('fa-sitemap', '{% trans "Variant stock allowed" %}');
-                }
-
-                // Display an extra icon if this part is an assembly
-                if (sub_part.assembly) {
-                    var text = `<span title='{% trans "Open subassembly" %}' class='fas fa-stream float-right'></span>`;
-
-                    html += renderLink(text, `/part/${row.sub_part}/bom/`);
                 }
 
                 return html;
@@ -798,17 +825,37 @@ function loadBomTable(table, options={}) {
     });
 
     cols.push({
-        field: 'sub_part_detail.stock',
+        field: 'available_stock',
         title: '{% trans "Available" %}',
         searchable: false,
         sortable: true,
         formatter: function(value, row) {
 
             var url = `/part/${row.sub_part_detail.pk}/?display=part-stock`;
-            var text = value;
 
-            if (value == null || value <= 0) {
-                text = `<span class='badge rounded-pill bg-danger'>{% trans "No Stock" %}</span>`;
+            // Calculate total "available" (unallocated) quantity
+            var substitute_stock = row.available_substitute_stock || 0;
+            var variant_stock = row.allow_variants ? (row.available_variant_stock || 0) : 0;
+
+            var available_stock = availableQuantity(row);
+            
+            var text = `${available_stock}`;
+
+            if (available_stock <= 0) {
+                text = `<span class='badge rounded-pill bg-danger'>{% trans "No Stock Available" %}</span>`;
+            } else {
+                var extra = '';
+                if ((substitute_stock > 0) && (variant_stock > 0)) {
+                    extra = '{% trans "Includes variant and substitute stock" %}';
+                } else if (variant_stock > 0) {
+                    extra = '{% trans "Includes variant stock" %}';
+                } else if (substitute_stock > 0) {
+                    extra = '{% trans "Includes substitute stock" %}';
+                }
+
+                if (extra) {
+                    text += `<span title='${extra}' class='fas fa-info-circle float-right icon-blue'></span>`;
+                }
             }
 
             return renderLink(text, url);
@@ -902,8 +949,10 @@ function loadBomTable(table, options={}) {
             formatter: function(value, row) {
                 var can_build = 0;
 
+                var available = availableQuantity(row);
+
                 if (row.quantity > 0) {
-                    can_build = row.sub_part_detail.stock / row.quantity;
+                    can_build = available / row.quantity;
                 }
 
                 return +can_build.toFixed(2);
@@ -914,11 +963,11 @@ function loadBomTable(table, options={}) {
                 var cb_b = 0;
 
                 if (rowA.quantity > 0) {
-                    cb_a = rowA.sub_part_detail.stock / rowA.quantity;
+                    cb_a = availableQuantity(rowA) / rowA.quantity;
                 }
 
                 if (rowB.quantity > 0) {
-                    cb_b = rowB.sub_part_detail.stock / rowB.quantity;
+                    cb_b = availableQuantity(rowB) / rowB.quantity;
                 }
 
                 return (cb_a > cb_b) ? 1 : -1;
@@ -989,14 +1038,6 @@ function loadBomTable(table, options={}) {
     // This function may be called recursively for multi-level BOMs
     function requestSubItems(bom_pk, part_pk, depth=0) {
 
-        // Prevent multi-level recursion
-        const MAX_BOM_DEPTH = 25;
-
-        if (depth >= MAX_BOM_DEPTH) {
-            console.log(`Maximum BOM depth (${MAX_BOM_DEPTH}) reached!`);
-            return;
-        }
-
         inventreeGet(
             options.bom_url,
             {
@@ -1011,17 +1052,13 @@ function loadBomTable(table, options={}) {
                     for (var idx = 0; idx < response.length; idx++) {
                         response[idx].parentId = bom_pk;
                     }
+
+                    var row = $(table).bootstrapTable('getRowByUniqueId', bom_pk);
+                    row.sub_assembly_received = true;
+
+                    $(table).bootstrapTable('updateByUniqueId', bom_pk, row, true);
                     
                     table.bootstrapTable('append', response);
-
-                    // Next, re-iterate and check if the new items also have sub items
-                    response.forEach(function(bom_item) {
-                        if (bom_item.sub_part_detail.assembly) {
-                            requestSubItems(bom_item.pk, bom_item.sub_part, depth + 1);
-                        }
-                    });
-
-                    table.treegrid('collapseAll');
                 },
                 error: function(xhr) {
                     console.log('Error requesting BOM for part=' + part_pk);
@@ -1065,7 +1102,6 @@ function loadBomTable(table, options={}) {
         formatNoMatches: function() {
             return '{% trans "No BOM items found" %}';
         },
-        clickToSelect: true,
         queryParams: filters,
         original: params,
         columns: cols,
@@ -1079,31 +1115,25 @@ function loadBomTable(table, options={}) {
             });
 
             table.treegrid('collapseAll');
+
+            // Callback for 'load sub assembly' button
+            $(table).find('.load-sub-assembly').click(function(event) {
+
+                event.preventDefault();
+
+                var pk = $(this).attr('pk');
+                var row = $(table).bootstrapTable('getRowByUniqueId', pk);
+
+                // Request BOM data for this subassembly
+                requestSubItems(row.pk, row.sub_part);
+
+                row.sub_assembly_requested = true;
+                $(table).bootstrapTable('updateByUniqueId', pk, row, true);
+            });
         },
         onLoadSuccess: function() {
-
             if (options.editable) {
                 table.bootstrapTable('uncheckAll');
-            }
-
-            var data = table.bootstrapTable('getData');
-
-            for (var idx = 0; idx < data.length; idx++) {
-                var row = data[idx];
-
-                // If a row already has a parent ID set, it's already been updated!
-                if (row.parentId) {
-                    continue;
-                }
-
-                // Set the parent ID of the top-level rows
-                row.parentId = parent_id;
-
-                table.bootstrapTable('updateRow', idx, row, true);
-
-                if (row.sub_part_detail.assembly) {
-                    requestSubItems(row.pk, row.sub_part);
-                }
             }
         },
     });
